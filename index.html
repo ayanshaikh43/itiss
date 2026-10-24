@@ -1,1 +1,259 @@
-...project form )( local debain ...
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Funny Snake Game 🐍</title>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    min-height: 100vh;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    background: linear-gradient(135deg, #171738, #34205c);
+    font-family: Arial, sans-serif;
+    color: white;
+    text-align: center;
+  }
+  .game {
+    width: 95%;
+    max-width: 440px;
+    padding: 20px;
+    border-radius: 24px;
+    background: #222244;
+    box-shadow: 0 10px 35px #0007;
+  }
+  h1 { margin: 0 0 8px; color: #a8ff60; }
+  #score { font-size: 20px; margin: 12px; }
+  canvas {
+    width: 100%;
+    max-width: 360px;
+    background: #101c2b;
+    border: 4px solid #72ff85;
+    border-radius: 12px;
+    display: block;
+    margin: auto;
+  }
+  #message {
+    min-height: 25px;
+    color: #ffe66d;
+    margin: 12px 0;
+  }
+  button {
+    border: 0;
+    border-radius: 12px;
+    padding: 12px 18px;
+    margin: 4px;
+    background: #a8ff60;
+    color: #182018;
+    font-size: 16px;
+    font-weight: bold;
+    cursor: pointer;
+  }
+  button:hover { transform: scale(1.05); }
+  .controls {
+    display: grid;
+    grid-template-columns: repeat(3, 55px);
+    justify-content: center;
+    gap: 6px;
+    margin-top: 14px;
+  }
+  .controls button { margin: 0; padding: 12px 0; }
+  .empty { visibility: hidden; }
+  p { color: #d6d6f5; font-size: 13px; }
+</style>
+</head>
+<body>
+<div class="game">
+  <h1>🐍 Hungry Noodle!</h1>
+  <div id="score">Score: 0 🏆</div>
+  <canvas id="board" width="360" height="360"></canvas>
+  <div id="message">Eat apples. Don't eat yourself! 😂</div>
+  <button onclick="startGame()">▶ Start / Restart</button>
+  <div class="controls">
+    <button class="empty"> </button>
+    <button onclick="turn(0,-1)">⬆️</button>
+    <button class="empty"> </button>
+    <button onclick="turn(-1,0)">⬅️</button>
+    <button onclick="turn(0,1)">⬇️</button>
+    <button onclick="turn(1,0)">➡️</button>
+  </div>
+  <p>Use arrow keys or WASD to move. Collect 🍎 to grow!</p>
+</div>
+
+<script>
+const canvas = document.getElementById("board");
+const ctx = canvas.getContext("2d");
+const size = 18;
+const cells = canvas.width / size;
+
+let snake, food, dx, dy, score, timer;
+let running = false;
+let dead = false;
+
+const jokes = [
+  "Yummy! Snake has a full belly! 🍎",
+  "You're one slippery noodle! 😂",
+  "That apple never stood a chance!",
+  "Sssssuper eating! 🐍",
+  "Snake is getting THICC! 💪",
+  "5-star restaurant? Nope. Ground apple! 😋"
+];
+
+function randomFood() {
+  let p;
+  do {
+    p = {
+      x: Math.floor(Math.random() * cells),
+      y: Math.floor(Math.random() * cells)
+    };
+  } while (snake.some(s => s.x === p.x && s.y === p.y));
+  return p;
+}
+
+function startGame() {
+  clearInterval(timer);
+  snake = [
+    {x: 10, y: 10},
+    {x: 9, y: 10},
+    {x: 8, y: 10}
+  ];
+  dx = 1; dy = 0;
+  score = 0;
+  food = randomFood();
+  running = true;
+  dead = false;
+  document.getElementById("message").textContent =
+    "Go, noodle, go! 🐍";
+  timer = setInterval(update, 115);
+  draw();
+}
+
+function turn(x, y) {
+  if (!running) {
+    if (dead) startGame();
+    return;
+  }
+  if (x === -dx && y === -dy) return;
+  dx = x;
+  dy = y;
+}
+
+document.addEventListener("keydown", e => {
+  const keys = {
+    ArrowUp: [0,-1], w: [0,-1], W: [0,-1],
+    ArrowDown: [0,1], s: [0,1], S: [0,1],
+    ArrowLeft: [-1,0], a: [-1,0], A: [-1,0],
+    ArrowRight: [1,0], d: [1,0], D: [1,0]
+  };
+  if (keys[e.key]) {
+    e.preventDefault();
+    turn(...keys[e.key]);
+  }
+  if (e.key === " " && !running) startGame();
+});
+
+function update() {
+  const head = {x: snake[0].x + dx, y: snake[0].y + dy};
+
+  const eating = head.x === food.x && head.y === food.y;
+  const body = eating ? snake : snake.slice(0, -1);
+
+  if (
+    head.x < 0 || head.y < 0 ||
+    head.x >= cells || head.y >= cells ||
+    body.some(s => s.x === head.x && s.y === head.y)
+  ) {
+    gameOver();
+    return;
+  }
+
+  snake.unshift(head);
+
+  if (eating) {
+    score += 10;
+    food = randomFood();
+    document.getElementById("message").textContent =
+      jokes[Math.floor(Math.random() * jokes.length)];
+  } else {
+    snake.pop();
+  }
+
+  document.getElementById("score").textContent =
+    "Score: " + score + " 🏆";
+  draw();
+}
+
+function draw() {
+  ctx.fillStyle = "#101c2b";
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  // Glowing grid
+  ctx.strokeStyle = "#ffffff09";
+  for (let i = 0; i <= canvas.width; i += size) {
+    ctx.beginPath();
+    ctx.moveTo(i, 0);
+    ctx.lineTo(i, canvas.height);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(0, i);
+    ctx.lineTo(canvas.width, i);
+    ctx.stroke();
+  }
+
+  // Apple
+  const fx = food.x * size + size/2;
+  const fy = food.y * size + size/2;
+  ctx.font = "18px Arial";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText("🍎", fx, fy);
+
+  // Snake
+  snake.forEach((s, i) => {
+    const x = s.x * size;
+    const y = s.y * size;
+    ctx.fillStyle = i === 0 ? "#b9ff53" :
+      `hsl(${105 - i * 2}, 85%, ${58 - Math.min(i, 15)}%)`;
+    ctx.beginPath();
+    ctx.roundRect(x + 1, y + 1, size - 2, size - 2, 6);
+    ctx.fill();
+
+    if (i === 0) {
+      ctx.fillStyle = "#17202a";
+      ctx.font = "bold 6px Arial";
+      ctx.fillText(dx !== 0 ? "••" : "••",
+        x + size/2, y + (dy < 0 ? 6 : dy > 0 ? 12 : 6));
+      ctx.fillStyle = "white";
+      ctx.fillRect(x + 5, y + 5, 3, 3);
+      ctx.fillRect(x + 11, y + 5, 3, 3);
+    }
+  });
+}
+
+function gameOver() {
+  clearInterval(timer);
+  running = false;
+  dead = true;
+  draw();
+  ctx.fillStyle = "#000b";
+  ctx.fillRect(0, 125, 360, 110);
+  ctx.fillStyle = "#ff7474";
+  ctx.font = "bold 30px Arial";
+  ctx.textAlign = "center";
+  ctx.fillText("GAME OVER! 💀", 180, 165);
+  ctx.fillStyle = "white";
+  ctx.font = "18px Arial";
+  ctx.fillText("Score: " + score, 180, 197);
+  document.getElementById("message").textContent =
+    score >= 100 ? "Legendary noodle! 🏆" :
+    "Oops! The noodle ate itself! 😂";
+}
+
+startGame();
+</script>
+</body>
+</html>
