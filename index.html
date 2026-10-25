@@ -1,415 +1,488 @@
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Funny Snake Game 🐍</title>
-
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>Dirt Hill Rider</title>
 <style>
-* { box-sizing: border-box; }
-
-body {
-  margin: 0;
-  min-height: 100vh;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  background: linear-gradient(135deg, #171738, #34205c);
-  font-family: Arial, sans-serif;
-  color: white;
-  text-align: center;
-}
-
-.game {
-  width: 95%;
-  max-width: 440px;
-  padding: 20px;
-  border-radius: 24px;
-  background: #222244;
-  box-shadow: 0 10px 35px #0007;
-}
-
-h1 { margin: 0 0 8px; color: #a8ff60; }
-
-#score {
-  font-size: 20px;
-  margin: 12px;
-}
-
-#stats {
-  color: #ffe66d;
-  margin-bottom: 12px;
-  font-size: 14px;
-}
-
-canvas {
-  width: 100%;
-  max-width: 360px;
-  aspect-ratio: 1;
-  background: #101c2b;
-  border: 4px solid #72ff85;
-  border-radius: 12px;
-  display: block;
-  margin: auto;
-}
-
-#message {
-  min-height: 25px;
-  color: #ffe66d;
-  margin: 12px 0;
-}
-
-button {
-  border: 0;
-  border-radius: 12px;
-  padding: 12px 18px;
-  margin: 4px;
-  background: #a8ff60;
-  color: #182018;
-  font-size: 16px;
-  font-weight: bold;
-  cursor: pointer;
-  touch-action: manipulation;
-}
-
-button:hover { transform: scale(1.04); }
-
-.controls {
-  display: grid;
-  grid-template-columns: repeat(3, 58px);
-  justify-content: center;
-  gap: 6px;
-  margin-top: 14px;
-}
-
-.controls button { margin: 0; padding: 12px 0; }
-.empty { visibility: hidden; }
-
-p { color: #d6d6f5; font-size: 13px; }
+  html,body{margin:0;height:100%;overflow:hidden;background:#87ceeb;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;-webkit-user-select:none;user-select:none;touch-action:none}
+  canvas{display:block;width:100vw;height:100vh}
+  .btn{position:fixed;bottom:18px;width:120px;height:120px;border-radius:50%;border:4px solid rgba(255,255,255,.7);
+    background:rgba(0,0,0,.35);color:#fff;font-weight:800;font-size:18px;display:flex;align-items:center;justify-content:center;
+    text-align:center;line-height:1.1;-webkit-tap-highlight-color:transparent;touch-action:none}
+  .btn.on{background:rgba(255,160,0,.7)}
+  #brake{left:18px}
+  #gas{right:18px}
+  @media (hover:hover) and (pointer:fine){.btn{opacity:.55;width:90px;height:90px;font-size:14px}}
 </style>
 </head>
-
 <body>
-<div class="game">
-  <h1>🐍 Hungry Noodle!</h1>
-
-  <div id="score">Score: 0 🏆</div>
-  <div id="stats">Speed: 1 / 10 🐢</div>
-
-  <canvas id="board" width="360" height="360"></canvas>
-
-  <div id="message">Eat apples. Don't eat yourself! 😂</div>
-
-  <button onclick="startGame()">▶ Start / Restart</button>
-  <button onclick="togglePause()" id="pauseBtn">⏸ Pause</button>
-
-  <div class="controls">
-    <button class="empty"> </button>
-    <button onclick="turn(0,-1)">⬆️</button>
-    <button class="empty"> </button>
-    <button onclick="turn(-1,0)">⬅️</button>
-    <button onclick="turn(0,1)">⬇️</button>
-    <button onclick="turn(1,0)">➡️</button>
-  </div>
-
-  <p>Arrow keys / WASD to move. Eat 🍎 to grow and speed up!</p>
-  <p>Press SPACE to pause or resume.</p>
-</div>
+<canvas id="c"></canvas>
+<div class="btn" id="brake">BRAKE<br>◀ lean fwd</div>
+<div class="btn" id="gas">GAS<br>lean back ▶</div>
 
 <script>
-const canvas = document.getElementById("board");
-const ctx = canvas.getContext("2d");
+"use strict";
+/* ============================================================
+   DIRT HILL RIDER – single-file hill-climb bike game
+   Controls:  Gas  = → / D / W        Brake/Reverse = ← / A / S
+              Lean back = ↑ / Q       Lean forward = ↓ / E
+              Restart = Space / Enter / tap   Touch: on-screen buttons
+   ============================================================ */
 
-const size = 18;
-const cells = canvas.width / size;
+//#PHYS_START
+const G = 1500;              // gravity (px/s^2)
+const WR = 16;               // wheel radius
+const WHEELS = [{lx:-30,ly:16},{lx:30,ly:16}];
+const K = 260, C = 20;       // suspension spring / damper
+const INERTIA = 1100;
+const DRIVE = 600, MAXV = 900, BRAKEF = 650, MU = 1.8;
 
-// SPEED SETTINGS — change these values if you want
-const START_SPEED = 180; // Starting speed in milliseconds
-const SPEED_INCREASE = 5; // Speed increase per apple
-const MIN_SPEED = 55; // Maximum speed limit (lower = faster)
-
-let snake, food, dx, dy, score;
-let timer = null;
-let speed = START_SPEED;
-let running = false;
-let paused = false;
-let dead = false;
-
-const jokes = [
-  "Yummy! Snake has a full belly! 🍎",
-  "You're one slippery noodle! 😂",
-  "That apple never stood a chance!",
-  "Sssssuper eating! 🐍",
-  "Snake is getting THICC! 💪",
-  "Five-star restaurant? Nope. Ground apple! 😋",
-  "Speed demon activated! ⚡",
-  "This noodle needs a racing license! 🏎️"
-];
-
-function randomFood() {
-  let p;
-  do {
-    p = {
-      x: Math.floor(Math.random() * cells),
-      y: Math.floor(Math.random() * cells)
-    };
-  } while (snake.some(s => s.x === p.x && s.y === p.y));
-  return p;
+function ground(x){
+  const t = Math.max(0, Math.min(1, (x - 250) / 700));        // flat start
+  const diff = 1 + Math.min(Math.max(x,0) / 12000, 1.0);       // gets rougher
+  const h = Math.sin(x/230)*55 + Math.sin(x/95+1.3)*20 + Math.sin(x/520+2)*80 + Math.sin(x/1300)*140;
+  return 600 - h * diff * 0.7 * t;
 }
 
-function startGame() {
-  clearInterval(timer);
+const input = {gas:false, brake:false, leanB:false, leanF:false};
+const b = {x:100, y:0, a:0, vx:0, vy:0, w:0};
+const contact = [false,false];
+const wheelSpin = [0,0];
+let fuel = 100;
 
-  snake = [
-    {x: 10, y: 10},
-    {x: 9, y: 10},
-    {x: 8, y: 10}
-  ];
-
-  dx = 1;
-  dy = 0;
-  score = 0;
-  speed = START_SPEED;
-  food = randomFood();
-
-  running = true;
-  paused = false;
-  dead = false;
-
-  document.getElementById("message").textContent =
-    "Go, noodle, go! 🐍";
-
-  document.getElementById("pauseBtn").textContent = "⏸ Pause";
-
-  updateStats();
-  draw();
-  startTimer();
+function resetBike(){
+  b.x = 100; b.y = ground(100) - 34; b.a = 0; b.vx = 0; b.vy = 0; b.w = 0;
+  contact[0] = contact[1] = false; wheelSpin[0] = wheelSpin[1] = 0;
 }
 
-function startTimer() {
-  clearInterval(timer);
-  if (running && !paused) {
-    timer = setInterval(update, speed);
-  }
-}
-
-function turn(x, y) {
-  if (paused || !running) return;
-
-  // Prevent reversing into yourself
-  if (x === -dx && y === -dy) return;
-
-  dx = x;
-  dy = y;
-}
-
-function togglePause() {
-  if (!running && !paused) return;
-
-  paused = !paused;
-
-  if (paused) {
-    clearInterval(timer);
-    document.getElementById("message").textContent =
-      "Noodle is taking a snack break! ☕";
-    document.getElementById("pauseBtn").textContent = "▶ Resume";
-  } else {
-    document.getElementById("message").textContent =
-      "Back to eating! 🍎";
-    document.getElementById("pauseBtn").textContent = "⏸ Pause";
-    startTimer();
-  }
-}
-
-document.addEventListener("keydown", e => {
-  const key = e.key.toLowerCase();
-
-  const keys = {
-    arrowup: [0,-1], w: [0,-1],
-    arrowdown: [0,1], s: [0,1],
-    arrowleft: [-1,0], a: [-1,0],
-    arrowright: [1,0], d: [1,0]
-  };
-
-  if (keys[key]) {
-    e.preventDefault();
-    turn(...keys[key]);
-  }
-
-  if (e.code === "Space") {
-    e.preventDefault();
-    togglePause();
-  }
-
-  if (key === "enter" && (!running && dead)) {
-    startGame();
-  }
-});
-
-function updateStats() {
-  const level = Math.min(
-    10,
-    Math.floor((START_SPEED - speed) /
-      ((START_SPEED - MIN_SPEED) / 9)) + 1
-  );
-
-  document.getElementById("score").textContent =
-    "Score: " + score + " 🏆";
-
-  document.getElementById("stats").textContent =
-    "Speed: " + level + " / 10 " +
-    (level < 4 ? "🐢" : level < 8 ? "🐍" : "⚡");
-}
-
-function update() {
-  if (!running || paused) return;
-
-  const head = {
-    x: snake[0].x + dx,
-    y: snake[0].y + dy
-  };
-
-  const eating = head.x === food.x && head.y === food.y;
-
-  // The tail moves away unless the snake eats food
-  const body = eating ? snake : snake.slice(0, -1);
-
-  if (
-    head.x < 0 || head.y < 0 ||
-    head.x >= cells || head.y >= cells ||
-    body.some(s => s.x === head.x && s.y === head.y)
-  ) {
-    gameOver();
-    return;
-  }
-
-  snake.unshift(head);
-
-  if (eating) {
-    score += 10;
-    food = randomFood();
-
-    // Increase speed gradually after each apple
-    speed = Math.max(MIN_SPEED, speed - SPEED_INCREASE);
-
-    // Restart timer with the new speed
-    startTimer();
-
-    document.getElementById("message").textContent =
-      jokes[Math.floor(Math.random() * jokes.length)];
-
-    updateStats();
-  } else {
-    snake.pop();
-  }
-
-  draw();
-}
-
-function draw() {
-  ctx.fillStyle = "#101c2b";
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-  // Background grid
-  ctx.strokeStyle = "#ffffff09";
-  for (let i = 0; i <= canvas.width; i += size) {
-    ctx.beginPath();
-    ctx.moveTo(i, 0);
-    ctx.lineTo(i, canvas.height);
-    ctx.stroke();
-
-    ctx.beginPath();
-    ctx.moveTo(0, i);
-    ctx.lineTo(canvas.width, i);
-    ctx.stroke();
-  }
-
-  // Draw apple
-  ctx.textAlign = "center";
-  ctx.textBaseline = "middle";
-  ctx.font = "18px Arial";
-  ctx.fillText(
-    "🍎",
-    food.x * size + size / 2,
-    food.y * size + size / 2
-  );
-
-  // Draw snake
-  snake.forEach((s, i) => {
-    const x = s.x * size;
-    const y = s.y * size;
-
-    ctx.fillStyle = i === 0
-      ? "#b9ff53"
-      : `hsl(${105 - i * 2}, 85%, ${Math.max(30, 58 - i)}%)`;
-
-    ctx.beginPath();
-    ctx.roundRect(x + 1, y + 1, size - 2, size - 2, 6);
-    ctx.fill();
-
-    if (i === 0) {
-      // Eyes follow the direction of movement
-      let eye1x, eye1y, eye2x, eye2y;
-
-      if (dx !== 0) {
-        eye1x = x + size / 2 + dx * 4;
-        eye2x = eye1x;
-        eye1y = y + 5;
-        eye2y = y + 13;
-      } else {
-        eye1x = x + 5;
-        eye2x = x + 13;
-        eye1y = y + size / 2 + dy * 4;
-        eye2y = eye1y;
-      }
-
-      ctx.fillStyle = "#17202a";
-      ctx.beginPath();
-      ctx.arc(eye1x, eye1y, 2, 0, Math.PI * 2);
-      ctx.arc(eye2x, eye2y, 2, 0, Math.PI * 2);
-      ctx.fill();
+function step(dt){
+  const c = Math.cos(b.a), s = Math.sin(b.a);
+  let ax = 0, ay = G, aw = 0;
+  const canDrive = fuel > 0;
+  for(let i=0;i<2;i++){
+    const p = WHEELS[i];
+    const rx = p.lx*c - p.ly*s, ry = p.lx*s + p.ly*c;
+    const wx = b.x + rx, wy = b.y + ry;
+    const sl = (ground(wx+2) - ground(wx-2)) / 4;
+    const len = Math.sqrt(1 + sl*sl);
+    const tx = 1/len, ty = sl/len, nx = sl/len, ny = -1/len;
+    const d = ground(wx) - wy;
+    const pen = WR - d/len;
+    contact[i] = pen > 0;
+    if(pen > 0){
+      const vx = b.vx - b.w*ry, vy = b.vy + b.w*rx;
+      const vn = vx*nx + vy*ny, vt = vx*tx + vy*ty;
+      let Fn = K*pen - C*vn;
+      if(Fn < 0) Fn = 0;
+      if(Fn > 7000) Fn = 7000;
+      let Ft;
+      if(input.gas && canDrive)      Ft = vt < MAXV ? DRIVE : 0;
+      else if(input.brake)           Ft = vt > -260 ? -BRAKEF : 0;
+      else                           Ft = -vt * 0.12;
+      const lim = MU * Fn + 40;
+      if(Ft > lim) Ft = lim; else if(Ft < -lim) Ft = -lim;
+      const Fx = Fn*nx + Ft*tx, Fy = Fn*ny + Ft*ty;
+      ax += Fx; ay += Fy;
+      // tangential (drive) force gives only a softened wheelie torque
+      const Fxn = Fn*nx, Fyn = Fn*ny, Fxt = Ft*tx, Fyt = Ft*ty;
+      aw += ((rx*Fyn - ry*Fxn) + 0.35*(rx*Fyt - ry*Fxt)) / INERTIA;
+      wheelSpin[i] += (vt / WR) * dt;
+    } else {
+      let spinV = 0;
+      if(input.gas && canDrive) spinV = 40; else if(input.brake) spinV = 0; else spinV = 12;
+      wheelSpin[i] += spinV * dt * (input.brake && !input.gas ? 0 : 1);
     }
-  });
+  }
+  // rider / engine torque control (works on ground + in air)
+  let tq = 0;
+  const airborne = !contact[0] && !contact[1];
+  if(input.gas && canDrive) tq -= (airborne ? 7 : 2);     // nose up
+  if(input.brake)           tq += (airborne ? 7 : 2);     // nose down
+  if(input.leanB)           tq -= 13;
+  if(input.leanF)           tq += 13;
+  aw += tq * (airborne ? 1 : 0.55);
+  aw -= b.w * (airborne ? 0.5 : 1.2);   // angular damping
 
-  if (paused) {
-    ctx.fillStyle = "#0009";
-    ctx.fillRect(0, 145, 360, 70);
-    ctx.fillStyle = "#ffffff";
-    ctx.font = "bold 28px Arial";
-    ctx.fillText("PAUSED ⏸", 180, 180);
+  b.vx += ax*dt; b.vy += ay*dt; b.w += aw*dt;
+  b.x += b.vx*dt; b.y += b.vy*dt; b.a += b.w*dt;
+}
+
+function headPos(){
+  const c = Math.cos(b.a), s = Math.sin(b.a), lx = 8, ly = -40;
+  return {x: b.x + lx*c - ly*s, y: b.y + lx*s + ly*c};
+}
+function crashed(){
+  const c = Math.cos(b.a), s = Math.sin(b.a);
+  const pts = [[8,-40,8],[0,-22,4],[-18,-14,4],[22,-14,4]];
+  for(const [lx,ly,m] of pts){
+    const px = b.x + lx*c - ly*s, py = b.y + lx*s + ly*c;
+    if(py + m > ground(px)) return true;
+  }
+  return false;
+}
+//#PHYS_END
+
+/* ---------------- items (coins & fuel) ---------------- */
+const CHUNK = 500;
+function rnd(n){ const x = Math.sin(n*127.1 + 311.7)*43758.5453; return x - Math.floor(x); }
+const itemCache = new Map();
+function itemsInChunk(i){
+  if(itemCache.has(i)) return itemCache.get(i);
+  const list = [];
+  if(i >= 1){
+    const base = i*CHUNK;
+    if(i % 5 === 2){
+      const x = base + 250;
+      list.push({id:'f'+i, type:'fuel', x, y: ground(x) - 46});
+    }
+    if(rnd(i) < 0.75){
+      const n = 4 + Math.floor(rnd(i+9)*4);
+      const high = rnd(i+3) < 0.4;
+      for(let j=0;j<n;j++){
+        const x = base + 40 + j*42;
+        if(i % 5 === 2 && Math.abs(x - (base+250)) < 40) continue;
+        const lift = high ? 70 + Math.sin(j/(n-1)*Math.PI)*45 : 38;
+        list.push({id:'c'+i+'_'+j, type:'coin', x, y: ground(x) - lift});
+      }
+    }
+  }
+  itemCache.set(i, list);
+  return list;
+}
+
+/* ---------------- setup ---------------- */
+const cv = document.getElementById('c');
+const ctx = cv.getContext('2d');
+let W = 0, H = 0, DPR = 1;
+function resize(){
+  DPR = Math.min(window.devicePixelRatio || 1, 2);
+  W = window.innerWidth; H = window.innerHeight;
+  cv.width = W*DPR; cv.height = H*DPR;
+}
+window.addEventListener('resize', resize); resize();
+
+let state = 'menu';        // menu | play | over
+let overReason = '';
+let collected = new Set();
+let coinsRun = 0, bestDist = 0, totalCoins = 0, dist = 0;
+let camX = 0, camY = 0, stillTime = 0, shake = 0, time = 0;
+try{ bestDist = +localStorage.getItem('dhr_best') || 0; totalCoins = +localStorage.getItem('dhr_coins') || 0; }catch(e){}
+const particles = [];
+const popups = [];
+
+function startGame(){
+  resetBike(); fuel = 100; collected = new Set(); coinsRun = 0; dist = 0; stillTime = 0; shake = 0;
+  camX = b.x - 200; camY = b.y - 300;
+  state = 'play'; particles.length = 0; popups.length = 0;
+}
+function endGame(reason){
+  if(state !== 'play') return;
+  state = 'over'; overReason = reason; shake = reason === 'Crashed!' ? 14 : 0;
+  if(dist > bestDist) bestDist = dist;
+  totalCoins += coinsRun;
+  try{ localStorage.setItem('dhr_best', bestDist); localStorage.setItem('dhr_coins', totalCoins); }catch(e){}
+  for(let i=0;i<24;i++) particles.push({x:b.x,y:b.y,vx:(Math.random()-.5)*400,vy:-Math.random()*400,life:.8,max:.8,col:'#ffb300',r:3});
+}
+
+/* ---------------- input ---------------- */
+const keyMap = {
+  ArrowRight:'gas', KeyD:'gas', KeyW:'gas',
+  ArrowLeft:'brake', KeyA:'brake', KeyS:'brake',
+  ArrowUp:'leanB', KeyQ:'leanB',
+  ArrowDown:'leanF', KeyE:'leanF'
+};
+window.addEventListener('keydown', e=>{
+  if(keyMap[e.code]){ input[keyMap[e.code]] = true; e.preventDefault(); }
+  if((e.code==='Space'||e.code==='Enter') && state!=='play'){ startGame(); e.preventDefault(); }
+});
+window.addEventListener('keyup', e=>{ if(keyMap[e.code]) input[keyMap[e.code]] = false; });
+window.addEventListener('blur', ()=>{ for(const k in input) input[k] = false; });
+
+function bindBtn(id, key){
+  const el = document.getElementById(id);
+  const on = e=>{ e.preventDefault(); input[key] = true; el.classList.add('on'); if(state!=='play') startGame(); };
+  const off = e=>{ e.preventDefault(); input[key] = false; el.classList.remove('on'); };
+  el.addEventListener('pointerdown', on);
+  el.addEventListener('pointerup', off);
+  el.addEventListener('pointercancel', off);
+  el.addEventListener('pointerleave', off);
+  el.addEventListener('contextmenu', e=>e.preventDefault());
+}
+bindBtn('gas','gas'); bindBtn('brake','brake');
+cv.addEventListener('pointerdown', ()=>{ if(state!=='play') startGame(); });
+
+/* ---------------- update ---------------- */
+function update(dt){
+  time += dt;
+  if(state === 'play'){
+    const sub = 4, h = dt/sub;
+    for(let i=0;i<sub;i++) step(h);
+
+    const drain = (input.gas && fuel>0) ? 4.2 : 1.3;
+    fuel = Math.max(0, fuel - drain*dt);
+    dist = Math.max(dist, (b.x - 100) / 30);
+
+    // dust
+    if((contact[0]||contact[1]) && input.gas && fuel>0 && Math.random() < 0.6){
+      particles.push({x:b.x-34,y:b.y+22,vx:-80-Math.random()*120,vy:-Math.random()*90,life:.45,max:.45,col:'#c8a46a',r:2+Math.random()*3});
+    }
+
+    // items
+    const ci = Math.floor(b.x / CHUNK);
+    for(let i=ci-1;i<=ci+1;i++){
+      for(const it of itemsInChunk(i)){
+        if(collected.has(it.id)) continue;
+        const dx = it.x - b.x, dy = it.y - (b.y - 8);
+        if(dx*dx + dy*dy < 42*42){
+          collected.add(it.id);
+          if(it.type === 'coin'){ coinsRun++; popups.push({x:it.x,y:it.y,t:.7,txt:'+1',col:'#ffd400'}); }
+          else { fuel = Math.min(100, fuel + 55); popups.push({x:it.x,y:it.y,t:1,txt:'FUEL +',col:'#ff5252'}); }
+        }
+      }
+    }
+
+    // end conditions
+    if(crashed()) endGame('Crashed!');
+    const speed = Math.hypot(b.vx, b.vy);
+    if(fuel <= 0 && speed < 40) stillTime += dt; else stillTime = 0;
+    if(stillTime > 1.2) endGame('Out of fuel!');
+    if(b.y > 3000) endGame('Fell off the world');
+  }
+
+  // camera
+  const scale = viewScale();
+  const tx = b.x - (W/scale)*0.3 + Math.min(b.vx,900)*0.12;
+  const ty = b.y - (H/scale)*0.58;
+  camX += (tx - camX) * Math.min(1, dt*6);
+  camY += (ty - camY) * Math.min(1, dt*3.5);
+  if(shake>0) shake = Math.max(0, shake - dt*30);
+
+  for(let i=particles.length-1;i>=0;i--){
+    const p = particles[i]; p.life -= dt; p.x += p.vx*dt; p.y += p.vy*dt; p.vy += 500*dt;
+    if(p.life <= 0) particles.splice(i,1);
+  }
+  for(let i=popups.length-1;i>=0;i--){ popups[i].t -= dt; popups[i].y -= 40*dt; if(popups[i].t<=0) popups.splice(i,1); }
+}
+function viewScale(){ return Math.min(H/640, W/760); }
+
+/* ---------------- drawing ---------------- */
+function drawSky(){
+  const g = ctx.createLinearGradient(0,0,0,H);
+  g.addColorStop(0,'#5db7f0'); g.addColorStop(.65,'#bfe6fb'); g.addColorStop(1,'#f7efd0');
+  ctx.fillStyle = g; ctx.fillRect(0,0,W,H);
+  // sun
+  ctx.fillStyle = 'rgba(255,245,180,.9)';
+  ctx.beginPath(); ctx.arc(W*0.8, H*0.18, 46, 0, 7); ctx.fill();
+  // clouds
+  ctx.fillStyle = 'rgba(255,255,255,.85)';
+  for(let i=0;i<6;i++){
+    const cx = ((i*330 - camX*0.08 + time*6) % (W+400) + (W+400)) % (W+400) - 200;
+    const cy = 50 + (i*53)%130;
+    ctx.beginPath(); ctx.arc(cx,cy,24,0,7); ctx.arc(cx+26,cy+6,30,0,7); ctx.arc(cx+56,cy,22,0,7); ctx.fill();
+  }
+  // far hills
+  const layers = [[.15,'#9ccf9a',.55,120,300],[.3,'#6fb26e',.68,90,210]];
+  for(const [par,col,yf,amp,wl] of layers){
+    ctx.fillStyle = col; ctx.beginPath(); ctx.moveTo(0,H);
+    for(let x=0;x<=W;x+=12){
+      const wx = x + camX*par;
+      ctx.lineTo(x, H*yf + Math.sin(wx/wl)*amp*.35 + Math.sin(wx/(wl*.43)+2)*amp*.15);
+    }
+    ctx.lineTo(W,H); ctx.fill();
   }
 }
 
-function gameOver() {
-  clearInterval(timer);
-  running = false;
-  paused = false;
-  dead = true;
-
-  draw();
-
-  ctx.fillStyle = "#000b";
-  ctx.fillRect(0, 125, 360, 110);
-
-  ctx.fillStyle = "#ff7474";
-  ctx.font = "bold 29px Arial";
-  ctx.textAlign = "center";
-  ctx.fillText("GAME OVER! 💀", 180, 165);
-
-  ctx.fillStyle = "white";
-  ctx.font = "18px Arial";
-  ctx.fillText("Score: " + score, 180, 197);
-
-  document.getElementById("message").textContent =
-    score >= 100
-      ? "Legendary noodle! 🏆"
-      : "Oops! The noodle ate itself! 😂";
-
-  document.getElementById("pauseBtn").textContent = "⏸ Pause";
+function drawTerrain(scale){
+  const x0 = camX - 20, x1 = camX + W/scale + 20, bottom = camY + H/scale + 80;
+  ctx.beginPath(); ctx.moveTo(x0, bottom);
+  for(let x=x0;x<=x1;x+=8) ctx.lineTo(x, ground(x));
+  ctx.lineTo(x1, bottom); ctx.closePath();
+  const g = ctx.createLinearGradient(0, camY, 0, bottom);
+  g.addColorStop(0,'#8a5a2b'); g.addColorStop(1,'#4b2e14');
+  ctx.fillStyle = g; ctx.fill();
+  // dirt stripes
+  ctx.strokeStyle = 'rgba(0,0,0,.12)'; ctx.lineWidth = 3;
+  for(let k=1;k<=4;k++){
+    ctx.beginPath();
+    for(let x=x0;x<=x1;x+=16){ const y = ground(x) + k*34 + Math.sin(x/60+k)*5; x===x0?ctx.moveTo(x,y):ctx.lineTo(x,y); }
+    ctx.stroke();
+  }
+  // grass top
+  ctx.strokeStyle = '#4caf50'; ctx.lineWidth = 12; ctx.lineJoin = 'round';
+  ctx.beginPath();
+  for(let x=x0;x<=x1;x+=8){ const y = ground(x)+2; x===x0?ctx.moveTo(x,y):ctx.lineTo(x,y); }
+  ctx.stroke();
+  ctx.strokeStyle = '#7ddc6b'; ctx.lineWidth = 4;
+  ctx.beginPath();
+  for(let x=x0;x<=x1;x+=8){ const y = ground(x)-3; x===x0?ctx.moveTo(x,y):ctx.lineTo(x,y); }
+  ctx.stroke();
+  // distance markers
+  ctx.fillStyle = '#fff'; ctx.font = 'bold 15px system-ui'; ctx.textAlign = 'center';
+  const m0 = Math.floor((x0-100)/3000);
+  for(let m=m0;m<=m0+3;m++){
+    const mx = 100 + m*3000; if(m<=0||mx<x0||mx>x1) continue;
+    const gy = ground(mx);
+    ctx.fillStyle='#8d6e63'; ctx.fillRect(mx-3,gy-50,6,50);
+    ctx.fillStyle='#fff8e1'; ctx.fillRect(mx-30,gy-72,60,26);
+    ctx.fillStyle='#4e342e'; ctx.fillText((m*100)+'m', mx, gy-54);
+  }
 }
 
-startGame();
+function drawItems(){
+  const ci = Math.floor((camX + 300) / CHUNK);
+  for(let i=ci-2;i<=ci+3;i++){
+    for(const it of itemsInChunk(i)){
+      if(collected.has(it.id)) continue;
+      if(it.type === 'coin'){
+        const sx = Math.abs(Math.cos(time*4 + it.x*.05));
+        ctx.fillStyle = '#ffc400'; ctx.strokeStyle = '#b8860b'; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.ellipse(it.x, it.y, 11*Math.max(.25,sx), 11, 0, 0, 7); ctx.fill(); ctx.stroke();
+        ctx.fillStyle = '#fff3a0'; ctx.beginPath(); ctx.ellipse(it.x-2, it.y-3, 3*Math.max(.25,sx), 4, 0, 0, 7); ctx.fill();
+      } else {
+        const bob = Math.sin(time*3)*3;
+        ctx.save(); ctx.translate(it.x, it.y+bob);
+        ctx.fillStyle = '#e53935'; ctx.strokeStyle = '#7f0000'; ctx.lineWidth = 2;
+        ctx.fillRect(-13,-16,26,32); ctx.strokeRect(-13,-16,26,32);
+        ctx.fillStyle = '#ffeb3b'; ctx.fillRect(-7,-8,14,10);
+        ctx.fillStyle = '#212121'; ctx.fillRect(-6,-22,12,6);
+        ctx.fillStyle = '#fff'; ctx.font = 'bold 9px system-ui'; ctx.textAlign='center'; ctx.fillText('FUEL',0,13);
+        ctx.restore();
+      }
+    }
+  }
+}
+
+function drawWheel(x, y, spin){
+  ctx.save(); ctx.translate(x,y); ctx.rotate(spin);
+  ctx.fillStyle = '#1b1b1b'; ctx.beginPath(); ctx.arc(0,0,WR,0,7); ctx.fill();
+  ctx.strokeStyle = '#333'; ctx.lineWidth = 2;
+  for(let i=0;i<12;i++){ const a=i/12*Math.PI*2; ctx.beginPath(); ctx.moveTo(Math.cos(a)*WR*.85,Math.sin(a)*WR*.85); ctx.lineTo(Math.cos(a)*WR,Math.sin(a)*WR); ctx.stroke(); }
+  ctx.fillStyle = '#cfd8dc'; ctx.beginPath(); ctx.arc(0,0,9,0,7); ctx.fill();
+  ctx.strokeStyle = '#78909c'; ctx.lineWidth = 1.5;
+  for(let i=0;i<4;i++){ const a=i/4*Math.PI; ctx.beginPath(); ctx.moveTo(Math.cos(a)*9,Math.sin(a)*9); ctx.lineTo(-Math.cos(a)*9,-Math.sin(a)*9); ctx.stroke(); }
+  ctx.fillStyle = '#546e7a'; ctx.beginPath(); ctx.arc(0,0,2.5,0,7); ctx.fill();
+  ctx.restore();
+}
+
+function drawBike(){
+  ctx.save();
+  ctx.translate(b.x, b.y); ctx.rotate(b.a);
+  ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  // wheels
+  drawWheel(WHEELS[0].lx, WHEELS[0].ly, wheelSpin[0]);
+  drawWheel(WHEELS[1].lx, WHEELS[1].ly, wheelSpin[1]);
+  // swingarm + fork
+  ctx.strokeStyle = '#37474f'; ctx.lineWidth = 5;
+  ctx.beginPath(); ctx.moveTo(-30,16); ctx.lineTo(-6,4); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(30,16); ctx.lineTo(24,-14); ctx.stroke();
+  // engine
+  ctx.fillStyle = '#455a64'; ctx.beginPath(); ctx.roundRect(-8,-2,24,16,4); ctx.fill();
+  // exhaust
+  ctx.strokeStyle = '#b0bec5'; ctx.lineWidth = 3;
+  ctx.beginPath(); ctx.moveTo(8,10); ctx.lineTo(-18,8); ctx.lineTo(-34,0); ctx.stroke();
+  // frame / tank
+  ctx.fillStyle = '#e53935';
+  ctx.beginPath(); ctx.moveTo(-14,-6); ctx.lineTo(20,-8); ctx.lineTo(24,-16); ctx.lineTo(4,-20); ctx.lineTo(-8,-12); ctx.closePath(); ctx.fill();
+  ctx.fillStyle = '#212121'; ctx.beginPath(); ctx.roundRect(-26,-12,22,6,3); ctx.fill();
+  // handlebar
+  ctx.strokeStyle = '#212121'; ctx.lineWidth = 4;
+  ctx.beginPath(); ctx.moveTo(24,-14); ctx.lineTo(28,-24); ctx.lineTo(22,-26); ctx.stroke();
+  // rider leg
+  ctx.strokeStyle = '#1565c0'; ctx.lineWidth = 7;
+  ctx.beginPath(); ctx.moveTo(-6,-16); ctx.lineTo(8,-4); ctx.lineTo(0,10); ctx.stroke();
+  // torso
+  ctx.strokeStyle = '#fdd835'; ctx.lineWidth = 11;
+  ctx.beginPath(); ctx.moveTo(-8,-18); ctx.lineTo(4,-34); ctx.stroke();
+  // arm
+  ctx.strokeStyle = '#f9a825'; ctx.lineWidth = 5;
+  ctx.beginPath(); ctx.moveTo(5,-32); ctx.lineTo(18,-28); ctx.lineTo(24,-25); ctx.stroke();
+  // head + helmet
+  ctx.fillStyle = '#ffcc80'; ctx.beginPath(); ctx.arc(8,-40,7,0,7); ctx.fill();
+  ctx.fillStyle = '#d81b60'; ctx.beginPath(); ctx.arc(8,-41,8.5,Math.PI*1.05,Math.PI*2.05); ctx.fill();
+  ctx.fillStyle = '#263238'; ctx.fillRect(10,-42,7,4);
+  ctx.restore();
+}
+
+function drawParticles(){
+  for(const p of particles){
+    ctx.globalAlpha = Math.max(0, p.life/p.max);
+    ctx.fillStyle = p.col; ctx.beginPath(); ctx.arc(p.x,p.y,p.r,0,7); ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+  ctx.font = 'bold 18px system-ui'; ctx.textAlign = 'center';
+  for(const p of popups){
+    ctx.globalAlpha = Math.min(1,p.t*2); ctx.fillStyle = p.col; ctx.strokeStyle = 'rgba(0,0,0,.5)'; ctx.lineWidth = 3;
+    ctx.strokeText(p.txt,p.x,p.y); ctx.fillText(p.txt,p.x,p.y);
+  }
+  ctx.globalAlpha = 1;
+}
+
+function txt(t, x, y, size, col, align){
+  ctx.font = `800 ${size}px system-ui, sans-serif`; ctx.textAlign = align || 'left';
+  ctx.lineWidth = Math.max(3, size/7); ctx.strokeStyle = 'rgba(0,0,0,.55)'; ctx.lineJoin = 'round';
+  ctx.strokeText(t,x,y); ctx.fillStyle = col || '#fff'; ctx.fillText(t,x,y);
+}
+
+function drawHUD(){
+  const pad = 16, s = Math.min(1, W/700);
+  txt(Math.floor(dist)+' m', pad, 44*Math.max(.8,s), 34*Math.max(.8,s), '#fff');
+  txt('🪙 '+coinsRun+'   (total '+(totalCoins + (state==='play'?coinsRun:0))+')', pad, 74*Math.max(.8,s), 18*Math.max(.85,s), '#ffe082');
+  txt('BEST '+Math.floor(Math.max(bestDist, dist))+' m', pad, 98*Math.max(.8,s), 15*Math.max(.85,s), '#e1f5fe');
+  // fuel bar
+  const bw = Math.min(240, W*0.4), bh = 20, bx = W - bw - pad, by = pad;
+  ctx.fillStyle = 'rgba(0,0,0,.45)'; ctx.fillRect(bx-3,by-3,bw+6,bh+6);
+  const f = fuel/100;
+  ctx.fillStyle = f > .5 ? '#66bb6a' : f > .22 ? '#ffca28' : (Math.floor(time*6)%2 ? '#ef5350' : '#b71c1c');
+  ctx.fillRect(bx,by,bw*f,bh);
+  txt('⛽ FUEL', bx, by+bh+22, 14, '#fff');
+}
+
+function drawOverlay(){
+  ctx.fillStyle = 'rgba(0,0,0,.45)'; ctx.fillRect(0,0,W,H);
+  const cx = W/2, cy = H/2, s = Math.min(1, W/640);
+  if(state === 'menu'){
+    txt('DIRT HILL RIDER', cx, cy-90*s, 52*s, '#ffca28', 'center');
+    txt('Climb the hills. Grab coins & fuel. Don\'t crash your head!', cx, cy-45*s, 18*s, '#fff', 'center');
+    txt('→ / D = GAS      ← / A = BRAKE', cx, cy+0*s, 20*s, '#fff', 'center');
+    txt('↑ / Q = lean back      ↓ / E = lean forward', cx, cy+30*s, 18*s, '#cfd8dc', 'center');
+    txt('Touch: use the on-screen buttons', cx, cy+58*s, 16*s, '#cfd8dc', 'center');
+    txt(Math.floor(time*2)%2 ? 'Press SPACE or tap to start' : ' ', cx, cy+110*s, 26*s, '#80ff80', 'center');
+    if(bestDist>0) txt('Best: '+Math.floor(bestDist)+' m', cx, cy+145*s, 18*s, '#e1f5fe', 'center');
+  } else if(state === 'over'){
+    txt(overReason, cx, cy-60*s, 52*s, '#ff7043', 'center');
+    txt('Distance: '+Math.floor(dist)+' m', cx, cy-10*s, 28*s, '#fff', 'center');
+    txt('Coins: '+coinsRun, cx, cy+24*s, 22*s, '#ffe082', 'center');
+    if(dist >= bestDist && dist > 1) txt('★ NEW BEST ★', cx, cy+58*s, 22*s, '#80ff80', 'center');
+    txt(Math.floor(time*2)%2 ? 'SPACE or tap to retry' : ' ', cx, cy+105*s, 26*s, '#80ff80', 'center');
+  }
+}
+
+function render(){
+  ctx.setTransform(DPR,0,0,DPR,0,0);
+  drawSky();
+  const scale = viewScale();
+  const sx = shake ? (Math.random()-.5)*shake : 0, sy = shake ? (Math.random()-.5)*shake : 0;
+  ctx.setTransform(DPR*scale,0,0,DPR*scale,(-camX*scale+sx)*DPR,(-camY*scale+sy)*DPR);
+  drawTerrain(scale);
+  drawItems();
+  if(state !== 'over' || shake > 0 || true) drawBike();
+  drawParticles();
+  ctx.setTransform(DPR,0,0,DPR,0,0);
+  drawHUD();
+  if(state !== 'play') drawOverlay();
+}
+
+/* ---------------- main loop ---------------- */
+resetBike(); camX = b.x - 200; camY = b.y - 300;
+let last = performance.now();
+function frame(now){
+  let dt = (now - last)/1000; last = now;
+  if(dt > 0.05) dt = 0.05;
+  update(dt); render();
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
 </script>
 </body>
 </html>
